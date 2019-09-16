@@ -1,7 +1,7 @@
 Package: missSBM
 Type: Package
 Title: Handling Missing Data in Stochastic Block Models
-Version: 0.2.0
+Version: 0.2.1
 Authors@R: c(
   person("Julien", "Chiquet", role = c("aut", "cre"), email = "julien.chiquet@inra.fr",
       comment = c(ORCID = "0000-0002-3629-3429")),
@@ -21,7 +21,8 @@ Encoding: UTF-8
 LazyData: true
 RoxygenNote: 6.1.1
 Depends: R (>= 3.4.0)
-Imports: Rcpp, methods, ape, igraph, nloptr, corrplot, R6, magrittr
+Imports: Rcpp, methods, ape, igraph, nloptr, ggplot2, corrplot, R6,
+        magrittr
 LinkingTo: Rcpp, RcppArmadillo
 Collate: 'RcppExports.R' 'SBM-Class.R' 'SBM_fit-Class.R'
         'SBM_fit_covariates-Class.R' 'SBM_fit_nocovariate-Class.R'
@@ -33,12 +34,11 @@ Collate: 'RcppExports.R' 'SBM-Class.R' 'SBM_fit-Class.R'
         'sampledNetwork-Class.R' 'simulate.R' 'utils-pipe.R'
         'utils_initialization.R' 'war.R'
 Suggests: aricode, blockmodels, testthat, covr, knitr, rmarkdown,
-        ggplot2
 VignetteBuilder: knitr
 NeedsCompilation: yes
-Packaged: 2019-06-07 12:08:02 UTC; jchiquet
+Packaged: 2019-09-16 09:54:57 UTC; jchiquet
 Author: Julien Chiquet [aut, cre] (<https://orcid.org/0000-0002-3629-3429>),
   Pierre Barbillon [aut] (<https://orcid.org/0000-0002-7766-7693>),
   Timothée Tabouy [aut]
 Repository: CRAN
-Date/Publication: 2019-06-08 08:10:03 UTC
+Date/Publication: 2019-09-16 10:10:02 UTC
