@@ -7,7 +7,7 @@ referenceResults <- readRDS(system.file("extdata", "referenceResults.rds", packa
 
 test_that("check consistency against Tim's code for dyad, node, double standard and block sampling", {
 
-  tol_ref   <- 1e-2
+  tol_ref   <- 2e-2
   tol_truth <- 1e-2
   tol_ARI   <- .8
   truth   <- referenceResults$true_sbm
@@ -15,24 +15,21 @@ test_that("check consistency against Tim's code for dyad, node, double standard 
   cat("\nsampling: ")
   for (sampling in c("dyad", "node", "double-standard", "block-node")) {
 
-    # tol_ref   <- 1e-3 ok for double standard
-    # tol_truth <- 1e-3
-
     refAlgo <- referenceResults[[sampling]]
     cat(sampling)
 
-    missSBM_out <- missSBM::estimate(
-      sampledNet = prepare_data(refAlgo$sampledNet),
+    missSBM_out <- estimateMissSBM(
+      adjacencyMatrix = refAlgo$sampledNet,
       vBlocks = truth$nBlocks,
       sampling = sampling,
-      clusterInit = "spectral"
+      control = list(clusterInit = "spectral")
     )
     newAlgo <- missSBM_out$bestModel
 
-    ## mixture parameters (alpha)
-    err_new <- error(newAlgo$fittedSBM$mixtureParam, truth$mixtureParam, sort = TRUE)
-    err_old <- error(refAlgo$mixtureParam          , truth$mixtureParam, sort = TRUE)
-    gap_old <- error(newAlgo$fittedSBM$mixtureParam, refAlgo$mixtureParam, sort = TRUE)
+    ## mixture parameters (pi)
+    err_new <- error(newAlgo$fittedSBM$blockProp, truth$mixtureParam, sort = TRUE)
+    err_old <- error(refAlgo$mixtureParam       , truth$mixtureParam, sort = TRUE)
+    gap_old <- error(newAlgo$fittedSBM$blockProp, refAlgo$mixtureParam, sort = TRUE)
     if (err_new < err_old) {
       expect_lt(err_new, tol_truth)
       cat(" new better on mixture")
@@ -41,10 +38,10 @@ test_that("check consistency against Tim's code for dyad, node, double standard 
       expect_lt(gap_old, tol_ref)
     }
 
-    ## connectivity parameters (pi)
-    err_new <- error(newAlgo$fittedSBM$connectParam, truth$connectParam, sort = TRUE)
-    err_old <- error(refAlgo$connectParam          , truth$connectParam, sort = TRUE)
-    err_gap <- error(newAlgo$fittedSBM$connectParam, refAlgo$connectParam, sort = TRUE)
+    ## connectivity parameters (theta)
+    err_new <- error(newAlgo$fittedSBM$connectParam$mean, truth$connectParam, sort = TRUE)
+    err_old <- error(refAlgo$connectParam               , truth$connectParam, sort = TRUE)
+    err_gap <- error(newAlgo$fittedSBM$connectParam$mean, refAlgo$connectParam, sort = TRUE)
     if (err_new < err_old) {
       expect_lt(err_new, tol_truth)
       cat(" new better on connectivity")
@@ -94,18 +91,19 @@ test_that("check consistency against Tim's code for dyad and node sampling with 
 
     refAlgo <- referenceResults[[sampling]]
 
-    missSBM_out <- missSBM::estimate(
-      sampledNet  = prepare_data(refAlgo$sampledNet, refAlgo$covariates),
+    missSBM_out <- estimateMissSBM(
+      adjacencyMatrix = refAlgo$sampledNet,
       vBlocks     = truth$nBlocks,
       sampling    = ifelse(sampling == "dyad-covariates", "covar-dyad", "covar-node"),
-      clusterInit = "spectral"
+      covariates  = refAlgo$covariates,
+      control     = list(clusterInit = "spectral")
     )
     newAlgo <- missSBM_out$bestModel
 
-    ## mixture parameters (alpha)
-    err_new <- error(newAlgo$fittedSBM$mixtureParam, truth$mixtureParam, sort = TRUE)
-    err_old <- error(refAlgo$mixtureParam          , truth$mixtureParam, sort = TRUE)
-    gap_old <- error(newAlgo$fittedSBM$mixtureParam, refAlgo$mixtureParam, sort = TRUE)
+    ## mixture parameters (pi)
+    err_new <- error(newAlgo$fittedSBM$blockProp, truth$mixtureParam, sort = TRUE)
+    err_old <- error(refAlgo$mixtureParam       , truth$mixtureParam, sort = TRUE)
+    err_gap <- error(newAlgo$fittedSBM$blockProp, refAlgo$mixtureParam, sort = TRUE)
     if (err_new < err_old) {
       expect_lt(err_new, tol_truth)
       cat(" new better on mixture")
@@ -114,10 +112,10 @@ test_that("check consistency against Tim's code for dyad and node sampling with 
       expect_lt(err_gap, tol_ref)
     }
 
-    ## connectivity parameters (pi)
-    err_new <- error(logistic(newAlgo$fittedSBM$connectParam), logistic(truth$connectParam), sort = TRUE)
-    err_old <- error(logistic(refAlgo$connectParam)          , logistic(truth$connectParam), sort = TRUE)
-    err_gap <- error(logistic(newAlgo$fittedSBM$connectParam), logistic(refAlgo$connectParam), sort = TRUE)
+    ## connectivity parameters (theta)
+    err_new <- error(newAlgo$fittedSBM$connectParam$mean, .logistic(truth$connectParam), sort = TRUE)
+    err_old <- error(.logistic(refAlgo$connectParam)    , .logistic(truth$connectParam), sort = TRUE)
+    err_gap <- error(newAlgo$fittedSBM$connectParam$mean, .logistic(refAlgo$connectParam), sort = TRUE)
     if (err_new < err_old) {
       expect_lt(err_new, tol_truth*3)
       cat(" new better on connectivity")

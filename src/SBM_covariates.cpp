@@ -8,25 +8,12 @@ using namespace Rcpp;
 using namespace arma;
 
 // [[Rcpp::export]]
-Rcpp::NumericMatrix roundProduct(arma::cube phi, arma::vec beta) {
-
-  int N = phi.n_rows;
-  arma::mat M = arma::zeros<arma::mat>(N,N);
-
-  for (unsigned int k = 0; k < beta.size(); k++) {
-    M += phi.slice(k) * beta[k];
-  }
-
-  return Rcpp::wrap(M);
-}
-
-// [[Rcpp::export]]
 double vExpec_covariates(
     Rcpp::NumericMatrix Y,
     Rcpp::NumericMatrix roundProd,
     Rcpp::NumericMatrix gamma,
     Rcpp::NumericMatrix Tau,
-    Rcpp::NumericVector alpha
+    Rcpp::NumericVector pi
   ) {
 
   int N = Y.ncol();
@@ -42,7 +29,7 @@ double vExpec_covariates(
           }
         }
       }
-      loglik = loglik + Tau(i,q) * std::log(alpha[q]);
+      loglik = loglik + Tau(i,q) * std::log(pi[q]);
     }
   }
   return loglik ;
@@ -54,7 +41,7 @@ Rcpp::NumericMatrix E_step_covariates(
     Rcpp::NumericMatrix roundProd,
     Rcpp::NumericMatrix gamma,
     Rcpp::NumericMatrix Tau,
-    Rcpp::NumericVector alpha) {
+    Rcpp::NumericVector pi) {
 
   int N = Y.ncol();
   int Q = gamma.ncol();
@@ -71,7 +58,7 @@ Rcpp::NumericMatrix E_step_covariates(
           }
         }
       }
-      Tau(i,q) = alpha[q] * std::exp(acc);
+      Tau(i,q) = pi[q] * std::exp(acc);
     }
     Tau(i,_) = Tau(i,_)/sum(Tau(i,_));
   }

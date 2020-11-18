@@ -3,8 +3,10 @@
 \docType{data}
 \name{er_network}
 \alias{er_network}
-\title{ER ego centred network}
-\format{A sparse symmetric matrix with 741 rows and 741 columns \code{ESR1}}
+\title{ER ego centered network}
+\format{
+A sparse symmetric matrix with 741 rows and 741 columns \code{ESR1}
+}
 \source{
 \url{https://string-db.org/}
 }
@@ -12,7 +14,7 @@
 er_network
 }
 \description{
-A dataset containing the weighted PPI network centred around the ESR1 (ER) protein
+A dataset containing the weighted PPI network centered around the ESR1 (ER) protein
 }
 \examples{
 data("er_network")

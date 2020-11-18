@@ -4,21 +4,22 @@ set.seed(1890718)
 ### A SBM model : ###
 N <- 100
 Q <- 3
-alpha <- rep(1, Q)/Q       # mixture parameter
-pi <- diag(.45, Q, Q) + .05   # connectivity matrix
-directed <- FALSE         # if the network is directed or not
+pi <- rep(1, Q)/Q           # block proportion
+theta <- list(mean = diag(.45, Q, Q) + .05) # connectivity matrix
+directed <- FALSE              # if the network is directed or not
 
 ### Draw a SBM model
-mySBM <- missSBM::simulate(N, alpha, pi, directed) # simulation of ad Bernoulli non-directed SBM
-A <- mySBM$adjacencyMatrix             # the adjacency matrix
+mySBM <- sbm::sampleSimpleSBM(N, pi, theta) # simulation of ad Bernoulli non-directed SBM
+A <- mySBM$netMatrix             # the adjacency matrix
 
 test_that("missSBMcollection works", {
 
-  sampledNet <- missSBM::sample(A, "dyad", .5, clusters = mySBM$memberships)
+  adjMatrix  <- missSBM::observeNetwork(A, "dyad", .5, clusters = mySBM$memberships)
+  partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix)
 
   ## Instantiate the collection of missSBM_fit
   collection <- missSBM_collection$new(
-    sampledNet  = sampledNet,
+    partlyObservedNet  = partlyObservedNet,
     vBlocks     = 1:4,
     sampling    = "dyad",
     clusterInit = 'hierarchical', 1, TRUE, TRUE)
@@ -42,11 +43,13 @@ test_that("missSBMcollection works", {
 
 test_that("More smoothing tests", {
 
-  sampledNet <- missSBM::sample(A, "dyad", .5, clusters = mySBM$memberships)
+  adjMatrix  <- missSBM::observeNetwork(A, "dyad", .5, clusters = mySBM$memberships)
+  partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix)
+
 
   ## Instantiate the collection of missSBM_fit
   collection <- missSBM_collection$new(
-    sampledNet  = sampledNet,
+    partlyObservedNet  = partlyObservedNet,
     vBlocks     = 1:4,
     sampling    = "dyad",
     clusterInit = 'hierarchical', 1, TRUE, TRUE)

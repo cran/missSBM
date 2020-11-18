@@ -1,35 +1,3 @@
-#' @importFrom stats binomial glm.fit residuals
-init_clustering <- function(adjacencyMatrix, nBlocks, covarArray = NULL, clusterInit = "spectral") {
-
-  N <- nrow(adjacencyMatrix)
-
-  if (nBlocks > 1) {
-    if (!is.null(covarArray)) {
-      y <- as.vector(adjacencyMatrix)
-      X <- cbind(1, apply(covarArray, 3, as.vector))
-      adjacencyMatrix <- matrix(NA, N, N)
-      NAs <- is.na(y)
-      adjacencyMatrix[!NAs] <- logistic(residuals(glm.fit(X[!NAs, ], y[!NAs], family = binomial())))
-    }
-
-    if (is.character(clusterInit)) {
-      clusterInit <-
-        switch(clusterInit,
-               "spectral" = init_spectral(    adjacencyMatrix, nBlocks),
-               "kmeans"   = init_kmeans(      adjacencyMatrix, nBlocks),
-                            init_hierarchical(adjacencyMatrix, nBlocks)
-        )
-    } else if (is.numeric(clusterInit) | is.factor(clusterInit)) {
-      clusterInit <- as.integer(clusterInit)
-    } else {
-      stop("unknown type for initial clustering")
-    }
-  } else {
-    clusterInit <- rep(1L, N)
-  }
-  clusterInit
-}
-
 #' @importFrom stats sd
 init_spectral <- function(X, K) {
 
@@ -92,10 +60,10 @@ init_kmeans <- function(X, K) {
 }
 
 clustering_indicator <- function(clustering) {
-  nBlocks <- length(unique(clustering))
-  nNodes  <- length(clustering)
-  Z <- matrix(0,nNodes, nBlocks)
-  Z[cbind(seq.int(nNodes), clustering)] <- 1
+  nbBlocks <- length(unique(clustering))
+  nbNodes  <- length(clustering)
+  Z <- matrix(0,nbNodes, nbBlocks)
+  Z[cbind(seq.int(nbNodes), clustering)] <- 1
   Z
 }
 

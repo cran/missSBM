@@ -7,12 +7,12 @@ set.seed(1890718)
 ### A SBM model : ###
 N <- 200
 Q <- 3
-alpha <- rep(1, Q)/Q       # mixture parameter
-pi <- diag(.45, Q, Q) + .05   # connectivity matrix
+pi <- rep(1, Q)/Q           # block proportion
+theta <- list(mean = diag(.45, Q, Q) + .05) # connectivity matrix
 directed <- FALSE         # if the network is directed or not
 
 ### Draw a SBM model
-sbm <- missSBM::simulate(N, alpha, pi, directed) # simulation of ad Bernoulli non-directed SBM
+sbm <- sbm::sampleSimpleSBM(N, pi, theta) # simulation of ad Bernoulli non-directed SBM
 
 samplings <- list(
   list(name = "dyad", psi = 0.5, class = "dyadSampling_fit"),
@@ -35,25 +35,25 @@ test_that("missSBM-fit works and is consistent for all samplings", {
 ##    cat("\n -", sampling$name)
 
     ## sampled the network
-    sampledNet <- missSBM::sample(sbm$adjacencyMatrix, sampling$name, sampling$psi, sbm$memberships)
+    adjMatrix  <- missSBM::observeNetwork(sbm$netMatrix, sampling$name, sampling$psi, sbm$memberships)
+    partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix)
 
     ## Perform inference
-    missSBM <- missSBM:::missSBM_fit$new(sampledNet, Q, sampling$name, "hierarchical", FALSE)
+    missSBM <- missSBM:::missSBM_fit$new(partlyObservedNet, Q, sampling$name, "hierarchical", FALSE)
     out <- missSBM$doVEM(control)
 
     ## Sanity check
     expect_is(missSBM, "missSBM_fit")
-    expect_is(missSBM$fittedSBM, "SBM_fit_nocovariate")
+    expect_is(missSBM$fittedSBM, "SimpleSBM_fit_missSBM")
     expect_is(missSBM$fittedSampling, sampling$class)
-    expect_is(missSBM$sampledNetwork, "sampledNetwork")
     expect_equal(out, missSBM$monitoring)
 
     ## Optimization success
-    expect_gt(diff(range(out$objective, na.rm = TRUE)), 0)
+    expect_gte(diff(range(out$objective, na.rm = TRUE)), 0)
 
     ## SBM: parameters estimation
-    expect_lt(error(missSBM$fittedSBM$connectParam, sbm$connectParam), tol_truth)
-    expect_lt(error(missSBM$fittedSBM$mixtureParam, sbm$mixtureParam, sort = TRUE), tol_truth)
+    expect_lt(error(missSBM$fittedSBM$connectParam$mean, sbm$connectParam$mean), tol_truth)
+    expect_lt(error(missSBM$fittedSBM$blockProp, sbm$blockProp, sort = TRUE), tol_truth)
 
     ## sampling design: parameters estimation
     expect_lt(error(missSBM$fittedSampling$parameters, sampling$psi, sort = TRUE), tol_truth)
@@ -67,16 +67,16 @@ test_that("missSBM-fit works and is consistent for all samplings", {
 # test_that("miss SBM with degree sampling works", {
 #
 #   psi <- c(-5, .1)
-#   sampledNet <- sampleNetwork(A, "degree", psi)
+#   partlyObservedNet <- sampleNetwork(A, "degree", psi)
 #   ## Perform inference
-#   missSBM <- missSBM:::missSBM_fit$new(sampledNet, Q, "degree", "hierarchical)
+#   missSBM <- missSBM:::missSBM_fit$new(partlyObservedNet, Q, "degree", "hierarchical)
 #   out <- missSBM$doVEM(control)
 #
 #   ## Sanity check
 #   expect_is(missSBM, "missSBM_fit")
-#   expect_is(missSBM$fittedSBM, "SBM_fit_nocovariate")
+#   expect_is(missSBM$fittedSBM, "SimpleSBM_fit_missSBM")
 #   expect_is(missSBM$fittedSampling, "degreeSampling_fit")
-#   expect_is(missSBM$sampledNetwork, "sampledNetwork")
+#   expect_is(missSBM$partlyObservedNetwork, "partlyObservedNetwork")
 #
 #   ## Consistency
 #   tol <- 1e-2

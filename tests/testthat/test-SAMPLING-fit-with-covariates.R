@@ -1,12 +1,11 @@
 context("test network sampling fit (Class networkSampling_fit and chidren)")
 
-set.seed(178303)
+set.seed(1234)
 ### A SBM model : ###
 N <- 200
 Q <- 3
-alpha <- rep(1, Q)/Q                       # mixture parameter
-pi <- diag(.45, Q, Q) + .05                   # connectivity matrix
-directed <- FALSE                         # if the network is directed or not
+pi <- rep(1, Q)/Q                        # block proportion parameter
+theta <- list(mean = diag(.45,Q) + .05 ) # connectivity matrix
 
 test_that("Parameter estimation in dyad-centered sampling with covariates", {
 
@@ -16,16 +15,17 @@ test_that("Parameter estimation in dyad-centered sampling with covariates", {
   covarParam  <- rnorm(M, 0, 1)
   intercept  <- .5
 
-  sbm <- missSBM::simulate(N, alpha, log(pi/(1 - pi)), directed, covariates, covarParam)
+  sbm <- sbm::sampleSimpleSBM(N, pi, theta, covariates = covariates, covariatesParam = covarParam)
 
-  sampledNet <- missSBM::sample(sbm$adjacencyMatrix, "covar-dyad", covarParam, covariates = covariates, intercept = intercept)
+  adjMatrix  <- missSBM::observeNetwork(sbm$netMatrix, "covar-dyad", covarParam, covariates = covariates, intercept = intercept)
+  partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix, covariates, missSBM:::l1_similarity)
 
-  fittedSampling <- missSBM:::covarDyadSampling_fit$new(sampledNet, sbm$covarArray)
+  fittedSampling <- missSBM:::covarDyadSampling_fit$new(partlyObservedNet, sbm$covarArray)
   expect_is(fittedSampling, "covarDyadSampling_fit")
   expect_true(all(fittedSampling$prob_obs > 0, fittedSampling$prob_obs < 1))
 
   tolerance <- .5
-  # expect_lt(sum((fittedSampling$parameters - c(intercept, covarParam))^2)/(M + 1), tolerance)
+  expect_lt(sum((fittedSampling$parameters - c(intercept, covarParam))^2)/(M + 1), tolerance)
   expect_equal(fittedSampling$df, 1 + length(covarParam))
   expect_equal(fittedSampling$penalty, log(N * (N - 1)/2) * (1 + length(covarParam)) )
   expect_lt(fittedSampling$vExpec, 0)
@@ -37,11 +37,12 @@ test_that("Parameter estimation in dyad-centered sampling with covariates but ig
   M <- 5
   covariates <- replicate(M, matrix(rnorm(N * N ,mean = 0, sd = 1), N, N), simplify = FALSE)
   covarParam  <- rnorm(M, 0, 1)
-  sbm <- missSBM::simulate(N, alpha, log(pi/(1 - pi)), directed, covariates, covarParam)
+  sbm <- sbm::sampleSimpleSBM(N, pi, theta, covariates = covariates, covariatesParam = covarParam)
 
-  sampledNet <- missSBM::sample(sbm$adjacencyMatrix, "dyad", parameters = .9, covariates = covariates)
+  adjMatrix <- missSBM::observeNetwork(sbm$netMatrix, "dyad", parameters = .9, covariates = covariates)
+  partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix, covariates, missSBM:::l1_similarity)
 
-  fittedSampling <- missSBM:::dyadSampling_fit$new(sampledNet, sbm$covarArray)
+  fittedSampling <- missSBM:::dyadSampling_fit$new(partlyObservedNet, sbm$covarArray)
   expect_is(fittedSampling, "dyadSampling_fit")
   expect_true(all(fittedSampling$prob_obs > 0, fittedSampling$prob_obs < 1))
 
@@ -61,15 +62,16 @@ test_that("Parameter estimation in node-centered sampling with covariates", {
   covarParam <- rnorm(M, 0, 1)
   intercept  <- .5
 
-  sbm <- missSBM::simulate(N, alpha, log(pi/(1 - pi)), directed, covariates, covarParam)
-  sampledNet <- missSBM::sample(sbm$adjacencyMatrix, "covar-node", covarParam, covariates = covariates_node, intercept = intercept)
+  sbm <- sbm::sampleSimpleSBM(N, pi, theta, covariates = covariates, covariatesParam = covarParam)
+  adjMatrix <- missSBM::observeNetwork(sbm$netMatrix, "covar-node", covarParam, covariates = covariates_node, intercept = intercept, similarity = missSBM:::l1_similarity)
+  partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix, covariates_node, missSBM:::l1_similarity)
 
-  fittedSampling <- missSBM:::covarNodeSampling_fit$new(sampledNet, simplify2array(covariates_node))
+  fittedSampling <- missSBM:::covarNodeSampling_fit$new(partlyObservedNet, simplify2array(covariates_node))
   expect_is(fittedSampling, "covarNodeSampling_fit")
   expect_true(all(fittedSampling$prob_obs > 0, fittedSampling$prob_obs < 1))
 
-  tolerance <- .05
-  expect_lt(sum((fittedSampling$parameters - c(intercept, covarParam))^2)/(M + 1), tolerance)
+  tolerance <- .25
+  expect_lt(error(fittedSampling$parameters,c(intercept, covarParam)), tolerance)
   expect_equal(fittedSampling$df, 1 + length(covarParam))
   expect_equal(fittedSampling$penalty, log(N) * (1 + length(covarParam)))
   expect_lt(fittedSampling$vExpec, 0)
@@ -83,11 +85,12 @@ test_that("Parameter estimation in node-centered sampling with covariates but ig
   covariates <- lapply(1:M, function(m) covarArray[,,m])
   covarParam  <- rnorm(M, 0, 1)
 
-  sbm <- missSBM::simulate(N, alpha, log(pi/(1 - pi)), directed, covariates, covarParam)
+  sbm <- sbm::sampleSimpleSBM(N, pi, theta, covariates = covariates, covariatesParam = covarParam)
 
-  sampledNet <- missSBM::sample(sbm$adjacencyMatrix, "node", .9, covariates = covariates_node)
+  adjMatrix <- missSBM::observeNetwork(sbm$netMatrix, "node", .9, covariates = covariates_node)
+  partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix, covariates_node, missSBM:::l1_similarity)
 
-  fittedSampling <- missSBM:::nodeSampling_fit$new(sampledNet, simplify2array(covariates_node))
+  fittedSampling <- missSBM:::nodeSampling_fit$new(partlyObservedNet, simplify2array(covariates_node))
   expect_is(fittedSampling, "nodeSampling_fit")
   expect_true(all(fittedSampling$prob_obs > 0, fittedSampling$prob_obs < 1))
 
@@ -101,12 +104,14 @@ test_that("Parameter estimation in node-centered sampling with covariates but ig
 test_that("Parameter estimation in degree sampling", {
 
   ### Draw a SBM model (Bernoulli, undirected) with covariates
-  sbm <- missSBM::simulate(N, alpha, pi, directed)
+  sbm <- sbm::sampleSimpleSBM(N, pi, theta)
 
   psi <- c(-.5,0.01)
-  sampledNet <- missSBM::sample(sbm$adjacencyMatrix, "degree", psi)
+  adjMatrix <- missSBM::observeNetwork(sbm$netMatrix, "degree", psi)
+  partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix)
+
   Z0 <- missSBM:::clustering_indicator(sbm$memberships)
-  fittedSampling <- missSBM:::degreeSampling_fit$new(sampledNet, Z0, sbm$connectParam)
+  fittedSampling <- suppressWarnings(missSBM:::degreeSampling_fit$new(partlyObservedNet, Z0, sbm$connectParam$mean))
 
   # tolerance <- 1 ## not expected good after one iterate
   # expect_lt(sum((fittedSampling$parameters - psi)^2), tolerance)

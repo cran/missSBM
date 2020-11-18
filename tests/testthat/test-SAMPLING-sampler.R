@@ -6,14 +6,13 @@ set.seed(178303)
 ### A SBM model : ###
 N <- 200
 Q <- 3
-alpha <- rep(1, Q)/Q        # mixture parameter
-pi <- diag(.45, Q, Q) + .05 # connectivity matrix
-gamma <- log(pi/(1 - pi))   # logit transform of pi for the model with covariates
+pi <- rep(1, Q)/Q            # block proportion
+theta <- list(mean = diag(.45, Q, Q) + .05)  # connectivity matrix
 directed <- FALSE
 
 ### Draw a SBM model (Bernoulli, undirected)
-mySBM <- missSBM::simulate(N, alpha, pi, directed)
-A <- mySBM$adjacencyMatrix
+mySBM <- sbm::sampleSimpleSBM(N, pi, theta)
+A <- mySBM$netMatrix
 
 ### Draw a SBM model (Bernoulli, undirected) with covariates
 M <- 10
@@ -22,8 +21,8 @@ covarMatrix <- simplify2array(covariates_node)
 covarArray  <- missSBM:::getCovarArray(covarMatrix, missSBM:::l1_similarity)
 covariates_dyad <- lapply(seq(dim(covarArray)[3]), function(x) covarArray[ , , x])
 covarParam  <- rnorm(M, 0, 1)
-sbm <- missSBM::simulate(N, alpha, gamma, directed, covariates_dyad, covarParam)
-A_cov <- sbm$adjacencyMatrix
+sbm <- sbm::sampleSimpleSBM(N, pi, theta, covariates = covariates_dyad, covariatesParam = covarParam)
+A_cov <- sbm$netMatrix
 
 ## tolerance for tests
 tol <- 1e-2
@@ -99,7 +98,7 @@ test_that("Consistency of block-node sampling", {
   mySampler <- missSBM:::blockNodeSampler$new(psi, N, directed, mySBM$memberships)
   expect_is(mySampler, "blockNodeSampler")
   expect_equal(mySampler$type, "block-node")
-  expect_equal(mySampler$df, mySBM$nBlocks)
+  expect_equal(mySampler$df, mySBM$nbBlocks)
   expect_equal(mySampler$parameters, psi)
   mySampler$rSamplingMatrix()
   expect_equal(dim(mySampler$samplingMatrix), c(N,N))
@@ -132,4 +131,18 @@ test_that("Consistency of block-dyad sampling", {
   expect_equal(dim(mySampler$samplingMatrix), c(N,N))
 
 })
+
+
+test_that("Consistency of snowball sampling", {
+
+  param <- c(2,.05)
+  mySampler <- missSBM:::snowballSampler$new(param, A, directed)
+  expect_is(mySampler, "snowballSampler")
+  expect_equal(mySampler$type, "snowball")
+  expect_equal(mySampler$parameters, param)
+  mySampler$rSamplingMatrix()
+  expect_equal(dim(mySampler$samplingMatrix), c(N,N))
+
+})
+
 
