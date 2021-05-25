@@ -7,19 +7,22 @@
 #' Fields are accessed via active binding and cannot be changed by the user.
 #'
 #' This class comes with a set of R6 methods, some of them being useful for the user and exported
-#' as S3 methods. See the documentation for [show()], [print()] and [smooth()], the latter being
-#' used to smooth the ICL on a collection of model, as post-treatment.
+#' as S3 methods. See the documentation for [show()] and [print()]
 #'
 #' @examples
+#' ## Uncomment to set parallel computing with future
+#' ## future::plan("multicore", workers = 2)
+#'
 #' ## Sample 75% of dyads in  French political Blogosphere's network data
 #' adjacencyMatrix <- missSBM::frenchblog2007 %>%
-#'   igraph::as_adj (sparse = FALSE) %>%
-#'   missSBM::observeNetwork(sampling = "dyad", parameters = 0.25)
-#' collection <- estimateMissSBM(adjacencyMatrix, 3:5, sampling = "dyad")
+#'   igraph::delete.vertices(1:100) %>%
+#'   igraph::as_adj () %>%
+#'   missSBM::observeNetwork(sampling = "dyad", parameters = 0.75)
+#' collection <- estimateMissSBM(adjacencyMatrix, 1:5, sampling = "dyad")
 #' class(collection)
 #'
 #' @rdname missSBM_collection
-#'
+#' @importFrom future.apply future_lapply
 #' @include R6Class-missSBM_fit.R
 #' @export
 missSBM_collection <-
@@ -30,97 +33,138 @@ missSBM_collection <-
   ## fields for internal use (referring to mathematical notations)
   private = list(
     partlyObservedNet = NULL, # network data with convenient encoding (object of class 'partlyObservedNetwork')
-    missSBM_fit = NULL, # a list of models
-    # method for performing forward smoothing of the ICL
-    # a list of parameters controlling the variational EM algorithm. See details of function [estimateMissSBM()]
-    smoothing_forward = function(control) {
-      trace <- control$trace > 0; control$trace <- FALSE
-      sampling    <- private$missSBM_fit[[1]]$fittedSampling$type
-      useCov      <- private$missSBM_fit[[1]]$fittedSBM$nbCovariates > 0
-      adjacencyMatrix <- private$partlyObservedNet$netMatrix
-### TODO: why not include the basic imputation in partlyObservedNet ???
-      if (!is.null(private$partlyObservedNet$covarArray)) {
-        y <- as.vector(adjacencyMatrix)
-        X <- apply(private$partlyObservedNet$covarArray, 3, as.vector)
-        adjacencyMatrix <- matrix(NA, private$partlyObservedNet$nbNodes, private$partlyObservedNet$nbNodes)
-        NAs <- is.na(y)
-        adjacencyMatrix[!NAs] <- .logistic(residuals(glm.fit(X[!NAs, ], y[!NAs], family = binomial())))
-      }
+    missSBM_fit       = NULL, # a list of models
 
+    # method for performing forward exploration of the ICL
+    # a list of parameters controlling the variational EM algorithm. See details of function [estimateMissSBM()]
+    explore_forward = function(control) {
+
+      trace <- control$trace; control$trace <- FALSE
+      control_fast <- control
+      control_fast$maxIter <- 2
+      sampling <- private$missSBM_fit[[1]]$fittedSampling$type
+      useCov   <- private$missSBM_fit[[1]]$fittedSBM$nbCovariates > 0
+
+      if (length(self$models) == 1) return(NULL)
       if (trace) cat("   Going forward ")
-      for (i in self$vBlocks[-length(self$vBlocks)]) {
+      vBlocks <- self$vBlocks[-length(self$vBlocks)]
+      for (k in seq_along(vBlocks)) {
         if (trace) cat("+")
-        cl0 <- private$missSBM_fit[[i]]$fittedSBM$memberships
-        if (length(unique(cl0)) == i) { # when would this not happens ?
-          candidates <- mclapply(1:i, function(j) {
-            cl <- cl0
-            J  <- which(cl == j)
-            if (length(J) > 1) {
-              J1 <- base::sample(J, floor(length(J)/2))
-              J2 <- setdiff(J, J1)
-              cl[J1] <- j; cl[J2] <- i + 1
-              model <- missSBM_fit$new(private$partlyObservedNet, i + 1, sampling, cl, useCov)
-              model$doVEM(control)
-            } else {
-              model <- private$missSBM_fit[[i + 1]]$clone()
-            }
-            model
-          }, mc.cores = control$cores)
-          best_one <- candidates[[which.min(sapply(candidates, function(candidate) candidate$ICL))]]
-          if (is.na(private$missSBM_fit[[i + 1]]$ICL)) {
-            private$missSBM_fit[[i + 1]] <- best_one
-          } else if (best_one$ICL < private$missSBM_fit[[i + 1]]$ICL) {
-            private$missSBM_fit[[i + 1]] <- best_one
+
+        ## current  imputed network
+        base_net <- private$missSBM_fit[[k]]$imputedNetwork
+        if (private$missSBM_fit[[k]]$fittedSBM$directed) base_net <- base_net %*% t(base_net)
+        ## current clustering
+        cl0 <- private$missSBM_fit[[k]]$fittedSBM$memberships
+
+        cl_splitable <- (1:vBlocks[k])[tabulate(cl0, nbins = vBlocks[k]) >= 4]
+        sd <- sapply(cl_splitable, function(k_) sd(base_net[cl0 == k_, cl0 == k_]))
+        cl_splitable <- cl_splitable[sd > 0]
+
+        if (length(cl_splitable) > 0) {
+          cl_split <- vector("list", vBlocks[k])
+          cl_split[cl_splitable] <-
+            future_lapply(cl_splitable, function(k_) {
+              A <- base_net[cl0 == k_, cl0 == k_]
+              A <- 1/(1+exp(-A/sd(A)))
+              D <- 1/sqrt(rowSums(abs(A)))
+              L <- sweep(sweep(A, 1, D, "*"), 2, D, "*")
+              Un <- eigen(L, symmetric = TRUE)$vectors[, 1:2]
+              Un <- sweep(Un, 1, sqrt(rowSums(Un^2)), "/")
+              kmeans_missSBM(Un, 2)
+            }, future.seed = TRUE, future.scheduling = structure(TRUE, ordering = "random"))
+
+          ## build list of candidate clustering after splits
+          cl_candidates <- lapply(cl_splitable, function(k_)  {
+            split <- cl_split[[k_]]
+            split[cl_split[[k_]] == 1] <- k_
+            split[cl_split[[k_]] == 2] <- vBlocks[k] + 1
+            candidate <- cl0
+            candidate[candidate == k_] <- split
+            ## in case of empty classes, add randomly one guy in thoses classes
+            candidate <- factor(candidate, levels = 1:(vBlocks[k] + 1))
+            absent <- which(tabulate(candidate) == 0)
+            swap <- base::sample(1:length(candidate), length(absent))
+            candidate[swap] <- absent
+            as.numeric(candidate) # relabeling to start from 1
+          })
+
+          icl_candidates <- future_lapply(cl_candidates, function(cl_) {
+            model <- missSBM_fit$new(private$partlyObservedNet, sampling, as.integer(cl_), useCov)
+            model$doVEM(control_fast)
+            model$ICL
+          }, future.seed = TRUE, future.scheduling = structure(TRUE, ordering = "random")) %>% unlist()
+
+          best_one <-  missSBM_fit$new(private$partlyObservedNet, sampling, cl_candidates[[which.min(icl_candidates)]], useCov)
+          best_one$doVEM(control)
+
+          if (best_one$ICL < private$missSBM_fit[[k + 1]]$ICL) {
+            private$missSBM_fit[[k + 1]] <- best_one
           }
 
-          # best_one <- candidates[[which.max(sapply(candidates, function(candidate) candidate$loglik))]]
-          # if (is.na(private$missSBM_fit[[i + 1]]$loglik)) {
-          #   private$missSBM_fit[[i + 1]] <- best_one
-          # } else if (best_one$loglik > private$missSBM_fit[[i + 1]]$loglik) {
-          #   private$missSBM_fit[[i + 1]] <- best_one
-          # }
         }
+      }
+
+      if (trace) cat("\r                                                                                                    \r")
+    },
+    # method for performing backward exploration of the ICL
+    # control a list of parameters controlling the variational EM algorithm. See details of function [`estimate`]
+    explore_backward = function(control) {
+
+      trace <- control$trace; control$trace <- FALSE
+      control_fast <- control
+      control_fast$maxIter <- 2
+      sampling    <- private$missSBM_fit[[1]]$fittedSampling$type
+      useCov      <- private$missSBM_fit[[1]]$fittedSBM$nbCovariates > 0
+
+      if (length(self$models) == 1) return(NULL)
+      if (trace) cat("   Going backward ")
+      vBlocks <- self$vBlocks
+      for (k in seq(from = length(vBlocks), to = 2, by = -1) ) {
+        if (trace) cat("+")
+        cl0 <- factor(private$missSBM_fit[[k]]$fittedSBM$memberships, 1:vBlocks[k])
+        absent <- which(tabulate(cl0) == 0)
+        swap <- base::sample(1:length(cl0), length(absent))
+        cl0[swap] <- absent
+
+        ## build list of candidate clustering after merge
+        cl_candidates <- lapply(combn(vBlocks[k], 2, simplify = FALSE), function(couple) {
+          cl_merged <- cl0
+          levels(cl_merged)[couple] <- couple[1]
+          levels(cl_merged) <- as.character(1:(nlevels(cl0) - 1))
+          as.integer(cl_merged)
+        })
+
+        icl_candidates <- future_lapply(cl_candidates, function(cl_) {
+          model <- missSBM_fit$new(private$partlyObservedNet, sampling, as.integer(cl_), useCov)
+          model$doVEM(control_fast)
+          model$ICL
+        }, future.seed = TRUE, future.scheduling = structure(TRUE, ordering = "random")) %>% unlist()
+
+        best_one <-  missSBM_fit$new(private$partlyObservedNet, sampling, cl_candidates[[which.min(icl_candidates)]], useCov)
+        best_one$doVEM(control)
+
+        if (best_one$ICL < private$missSBM_fit[[k - 1]]$ICL) {
+          private$missSBM_fit[[k - 1]] <- best_one
+        }
+
       }
       if (trace) cat("\r                                                                                                    \r")
     },
-    # method for performing backward smoothing of the ICL
-    # control a list of parameters controlling the variational EM algorithm. See details of function [`estimate`]
-    smoothing_backward = function(control) {
-
-      trace <- control$trace > 0; control$trace <- FALSE
-      sampling    <- private$missSBM_fit[[1]]$fittedSampling$type
-      useCov      <- private$missSBM_fit[[1]]$fittedSBM$nbCovariates > 0
-
-      if (trace) cat("   Going backward ")
-      for (i in rev(self$vBlocks[-1])) {
-        if (trace) cat('+')
-        cl0 <- factor(private$missSBM_fit[[i]]$fittedSBM$memberships)
-        if (nlevels(cl0) == i) {
-          candidates <- mclapply(combn(i, 2, simplify = FALSE), function(couple) {
-            cl_fusion <- cl0
-            levels(cl_fusion)[which(levels(cl_fusion) == paste(couple[1]))] <- paste(couple[2])
-            levels(cl_fusion) <- as.character(1:(i - 1))
-            model <- missSBM_fit$new(private$partlyObservedNet, i - 1, sampling, cl_fusion, useCov)
-            model$doVEM(control)
-            model
-          }, mc.cores = control$cores)
-
-          best_one <- candidates[[which.min(sapply(candidates, function(candidate) candidate$ICL))]]
-          if (is.na(private$missSBM_fit[[i - 1]]$ICL)) {
-            private$missSBM_fit[[i - 1]] <- best_one
-          } else if (best_one$ICL < private$missSBM_fit[[i - 1]]$ICL) {
-            private$missSBM_fit[[i - 1]] <- best_one
-          }
-
-          # best_one <- candidates[[which.max(sapply(candidates, function(candidate) candidate$loglik))]]
-          # if (is.na(private$missSBM_fit[[i - 1]]$loglik)) {
-          #   private$missSBM_fit[[i - 1]] <- best_one
-          # } else if (best_one$loglik > private$missSBM_fit[[i - 1]]$loglik) {
-          #   private$missSBM_fit[[i - 1]] <- best_one
-          # }
-        }
-      }
-      if (trace) cat("\r                                                                                                    \r")
+    plot_icl = function() {
+      qplot(self$vBlocks, self$ICL, geom = "line") + theme_bw() + geom_point() +
+        labs(x = "#blocks", y = "Integrated Classification likelihood") + ggtitle("Model Selection")
+    },
+    plot_elbo = function() {
+      elbo <- sapply(self$models, function(model) model$loglik)
+      qplot(self$vBlocks, elbo, geom = "line") + theme_bw() + geom_point() +
+        labs(x = "#blocks", y = "Evidence (Varitional) Lower Bound") + ggtitle("Model Selection")
+    },
+    plot_monitoring = function() {
+      monitoring <- self$optimizationStatus
+      monitoring$nBlock <- as.factor(monitoring$nBlock)
+      ggplot(monitoring, aes(x = cumsum(iteration), y = elbo, color = nBlock)) + geom_line() + geom_point() +
+        theme_bw() + labs(x = "# cumulated V-EM iterations", y = "Evidence (variational) Lower Bound") + ggtitle("Optimization monitoring")
     }
   ),
   ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -129,64 +173,73 @@ missSBM_collection <-
   public = list(
     #' @description constructor for networkSampling
     #' @param partlyObservedNet An object with class [`partlyObservedNetwork`].
-    #' @param vBlocks vector of integer with the number of blocks in the successively fitted models
-    #' @param sampling The sampling design for the modelling of missing data: MAR designs ("dyad", "node") and NMAR designs ("double-standard", "block-dyad", "block-node" ,"degree")
-    #' @param clusterInit Initial method for clustering: either a character in "hierarchical", "spectral" or "kmeans", or a list with \code{length(vBlocks)} vectors, each with size \code{ncol(adjacencyMatrix)}, providing a user-defined clustering. Default is "hierarchical".
-    #' @param cores integer for number of cores used. Default is 1.
-    #' @param trace integer for verbosity (0, 1, 2). Default is 1. Useless when \code{cores} > 1
-    #' @param useCov logical. If covariates are present in partlyObservedNet, should they be used for the inference or of the network sampling design, or just for the SBM inference? default is TRUE.
-    initialize = function(partlyObservedNet, vBlocks, sampling, clusterInit, cores, trace, useCov) {
+    #' @param sampling The sampling design for the modelling of missing data: MAR designs ("dyad", "node") and MNAR designs ("double-standard", "block-dyad", "block-node" ,"degree")
+    #' @param clusterInit Initial clustering: a list of vectors, each with size \code{ncol(adjacencyMatrix)}.
+    #' @param control a list of parameters controlling advanced features. Only 'trace' and 'useCov' are relevant here. See [estimateMissSBM()] for details.
+    initialize = function(partlyObservedNet, sampling, clusterInit, control) {
 
-      if (trace) cat("\n")
-      if (trace) cat("\n Adjusting Variational EM for Stochastic Block Model\n")
-      if (trace) cat("\n\tImputation assumes a '", sampling,"' network-sampling process\n", sep = "")
-      if (trace) cat("\n")
-      if (!is.list(clusterInit)) clusterInit <- rep(list(clusterInit), length(vBlocks))
+      if (control$trace) cat("\n")
+      if (control$trace) cat("\n Adjusting Variational EM for Stochastic Block Model\n")
+      if (control$trace) cat("\n\tImputation assumes a '", sampling,"' network-sampling process\n", sep = "")
+      if (control$trace) cat("\n")
 
       stopifnot(inherits(partlyObservedNet, "partlyObservedNetwork"))
       private$partlyObservedNet <- partlyObservedNet
-
-      private$missSBM_fit <- mcmapply(
-        function(nBlock, cl0) {
-          if (trace) cat(" Initialization of model with", nBlock,"blocks.", "\r")
-          missSBM_fit$new(partlyObservedNet, nBlock, sampling, cl0, useCov)
-        }, nBlock = vBlocks, cl0 = clusterInit, mc.cores = cores
+      if (control$trace) cat(" Initialization of", length(clusterInit), "model(s).", "\n")
+      private$missSBM_fit <- lapply(clusterInit,
+        function(cl0) {
+          missSBM_fit$new(partlyObservedNet, sampling, cl0, control$useCov)
+        }
       )
     },
     #' @description method to launch the estimation of the collection of models
     #' @param control a list of parameters controlling the variational EM algorithm. See details of function [estimateMissSBM()]
     estimate = function(control) {
-      trace_main <- control$trace > 0
-      control$trace <- ifelse (control$trace > 1, TRUE, FALSE)
-      if (trace_main) cat("\n")
-      invisible(
-        mclapply(private$missSBM_fit, function(model) {
-          if (trace_main) cat(" Performing VEM inference for model with", model$fittedSBM$nbBlocks,"blocks.\r")
-            model$doVEM(control)
-          }, mc.cores = control$cores
-        )
-      )
+      if (control$trace) cat(" Performing VEM inference\n")
+      private$missSBM_fit <- future_lapply(private$missSBM_fit, function(model) {
+        if (control$trace) cat(" \tModel with", model$fittedSBM$nbBlocks,"blocks.\r")
+        control$trace <- FALSE
+        model$doVEM(control)
+        model
+      }, future.seed = TRUE, future.scheduling = structure(TRUE, ordering = "random"))
       invisible(self)
     },
-    #' @description method for performing smoothing of the ICL
-    #' @param type character, the type of smoothing: forward, backward, both
-    #' @param control a list of parameters controlling the smoothing. See details of regular function [smooth()]
-    smooth = function(type, control) {
-      if (control$trace > 0) control$trace <- TRUE else control$trace <- FALSE
-      if (control$trace) cat("\n Smoothing ICL\n")
-      for (i in 1:control$iterates) {
-        if (type %in% c('forward' , 'both')) private$smoothing_forward(control)
-        if (type %in% c('backward', 'both')) private$smoothing_backward(control)
+    #' @description method for performing exploration of the ICL
+    #' @param control a list of parameters controlling the exploration, similar to those found in the regular function [estimateMissSBM()]
+    explore = function(control) {
+      if (control$iterates > 0) {
+        if (control$trace) cat("\n Looking for better solutions\n")
+        for (i in 1:control$iterates) {
+          if (control$exploration %in% c('forward' , 'both')) {
+            if (control$trace) cat(" Pass",i)
+            private$explore_forward(control)
+          }
+          if (control$exploration %in% c('backward', 'both')) {
+            if (control$trace) cat(" Pass",i)
+            private$explore_backward(control)
+          }
+        }
       }
+    },
+    #' @description plot method for missSBM_collection
+    #' @param type the type specifies the field to plot, either "icl", "elbo" or "monitoring". Default is "icl"
+    plot = function(type = c("icl", "elbo", "monitoring")) {
+      gg_obj <- switch(match.arg(type),
+          "icl"        = private$plot_icl(),
+          "elbo"       = private$plot_elbo(),
+          "monitoring" = private$plot_monitoring()
+      )
+      gg_obj
     },
     #' @description show method for missSBM_collection
     show = function() {
       cat("--------------------------------------------------------\n")
       cat("COLLECTION OF", length(self$vBlocks), "SBM fits          \n")
       cat("========================================================\n")
-      cat(" - Number of blocks considers: from ", min(self$vBlocks), " to ", max(self$vBlocks),"\n", sep = "")
+      cat(" - Number of blocks considered: from ", min(self$vBlocks), " to ", max(self$vBlocks),"\n", sep = "")
       cat(" - Best model (smaller ICL): ", self$bestModel$fittedSBM$nbBlocks, "\n", sep = "")
       cat(" - Fields: $models, $ICL, $vBlocks, $bestModel, $optimizationStatus\n")
+      cat(" - Method: $estimate(), $explore(), $plot() \n")
     },
     #' @description User friendly print method
     print = function() { self$show() }
@@ -212,41 +265,3 @@ missSBM_collection <-
     }
   )
 )
-
-#' Smooth the path ICL in a collection of missSBM_fit models
-#'
-#' Apply a split and/or merge strategy of the clustering in a path of models in a collection
-#' of SBM ordered by number of block. The goal is to find better initialization. This results
-#' in a "smoothing" of the ICL, that should be close to concave.
-#'
-#' @param Robject an object with class missSBM_collection, i.e. an output from [estimateMissSBM()]
-#' @param type character indicating what kind of ICL smoothing should be use among "forward", "backward" or "both". Default is "forward".
-#' @param control a list controlling the variational EM algorithm. See details.
-#'
-#' @details The list of parameters \code{control} controls the optimization process and the variational EM algorithm, with the following entries
-#'  \itemize{
-#'  \item{"iterates": }{integer for the number of iterations of smoothing. Default is 1.}
-#'  \item{"threshold": }{V-EM algorithm stops stop when an optimization step changes the objective function
-#'         by less than threshold. Default is 1e-3.}
-#'  \item{"maxIter": }{V-EM algorithm stops when the number of iteration exceeds maxIter.
-#'        Default is 100 with no covariate, 50 otherwise.}
-#'  \item{"fixPointIter": }{number of fix-point iterations in the V-E step.
-#'        Default is 5 with no covariate, 2 otherwise.}
-#'  \item{"cores": }{integer for number of cores used. Default is 1.}
-#'  \item{"trace": }{integer for verbosity. Useless when \code{cores} > 1}
-#' }
-#' @return An invisible missSBM_collection, in which the ICL has been smoothed
-#' @export
-smooth <- function(Robject, type = c("forward", "backward", "both"), control = list()) {
-
-  stopifnot(inherits(Robject, "missSBM_collection"))
-
-  ## defaut control parameter for VEM, overwritten by user specification
-  ctrl <- list(threshold = 1e-3, maxIter = 50, fixPointIter = 2, cores = 1, trace = 1, iterates = 1)
-  ctrl[names(control)] <- control
-
-  ## Run the smoothing
-  Robject$smooth(match.arg(type), ctrl)
-
-  invisible(Robject)
-}

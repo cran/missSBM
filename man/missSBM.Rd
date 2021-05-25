@@ -9,7 +9,6 @@ The missSBM package provides the following top-level functions functions:
 \itemize{
 \item{\code{\link{observeNetwork}}}{a function to draw a partially observe network from an existing, fully observed network according to a variety of sampling designs}
 \item{\code{\link{estimateMissSBM}}}{a function to perform inference of SBM from a partially observed under various sampling designs.}
-\item{\code{\link{smooth}}}{a function to smooth an existing collection of missSBM estimation, to avoid being trapped in local maxima.}
 }
 }
 \details{
@@ -19,7 +18,9 @@ directly. The user should only have a basic understanding of the fields of each 
 \itemize{
 \item{\code{\link{missSBM_fit}}}{an object that put together an SBM fit and and network sampling fit - the main point of the missSBM package !}
 \item{\code{\link{missSBM_collection}}}{an object to store a collection of missSBM_fit, ordered by number of block}
-\item{\code{\link{SimpleSBM_fit_missSBM}}}{an object to define and store an SBM fit (with no missing values)}
+\item{\code{\link{SimpleSBM_fit_MNAR}}}{an object to define and store an SBM fit with MNAR values}
+\item{\code{\link{SimpleSBM_fit_noCov}}}{an object to define and store an SBM fit without covariate, MAR values}
+\item{\code{\link{SimpleSBM_fit_withCov}}}{an object to define and store an SBM fit with covariates, MAR values}
 \item{\code{\link{networkSampling}}}{an object to define and store a network sampling fit}
 }
 
@@ -29,5 +30,9 @@ missSBM extends some functionality of the package sbm, by inheriting from classe
 Timothée Tabouy, Pierre Barbillon & Julien Chiquet (2019) “Variational Inference for Stochastic Block Models from Sampled Data”, Journal of the American Statistical Association, \doi{10.1080/01621459.2018.1562934}
 }
 \author{
-Timothée Tabouy, Pierre Barbillon, Julien Chiquet
+Pierre Barbillon \email{pierre.barbillon@agroparistech.fr}
+
+Julien Chiquet \email{julien.chiquet@inrae.fr}
+
+Timothée Tabouy \email{timothee.tabouy@gmail.com}
 }

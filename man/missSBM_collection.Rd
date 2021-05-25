@@ -11,15 +11,18 @@ of an object with class \code{\link{missSBM_collection}}, described here.
 Fields are accessed via active binding and cannot be changed by the user.
 
 This class comes with a set of R6 methods, some of them being useful for the user and exported
-as S3 methods. See the documentation for \code{\link[=show]{show()}}, \code{\link[=print]{print()}} and \code{\link[=smooth]{smooth()}}, the latter being
-used to smooth the ICL on a collection of model, as post-treatment.
+as S3 methods. See the documentation for \code{\link[=show]{show()}} and \code{\link[=print]{print()}}
 }
 \examples{
+## Uncomment to set parallel computing with future
+## future::plan("multicore", workers = 2)
+
 ## Sample 75\% of dyads in  French political Blogosphere's network data
 adjacencyMatrix <- missSBM::frenchblog2007 \%>\%
-  igraph::as_adj (sparse = FALSE) \%>\%
-  missSBM::observeNetwork(sampling = "dyad", parameters = 0.25)
-collection <- estimateMissSBM(adjacencyMatrix, 3:5, sampling = "dyad")
+  igraph::delete.vertices(1:100) \%>\%
+  igraph::as_adj () \%>\%
+  missSBM::observeNetwork(sampling = "dyad", parameters = 0.75)
+collection <- estimateMissSBM(adjacencyMatrix, 1:5, sampling = "dyad")
 class(collection)
 
 }
@@ -43,7 +46,8 @@ class(collection)
 \itemize{
 \item \href{#method-new}{\code{missSBM_collection$new()}}
 \item \href{#method-estimate}{\code{missSBM_collection$estimate()}}
-\item \href{#method-smooth}{\code{missSBM_collection$smooth()}}
+\item \href{#method-explore}{\code{missSBM_collection$explore()}}
+\item \href{#method-plot}{\code{missSBM_collection$plot()}}
 \item \href{#method-show}{\code{missSBM_collection$show()}}
 \item \href{#method-print}{\code{missSBM_collection$print()}}
 \item \href{#method-clone}{\code{missSBM_collection$clone()}}
@@ -55,15 +59,7 @@ class(collection)
 \subsection{Method \code{new()}}{
 constructor for networkSampling
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{missSBM_collection$new(
-  partlyObservedNet,
-  vBlocks,
-  sampling,
-  clusterInit,
-  cores,
-  trace,
-  useCov
-)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{missSBM_collection$new(partlyObservedNet, sampling, clusterInit, control)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -71,17 +67,11 @@ constructor for networkSampling
 \describe{
 \item{\code{partlyObservedNet}}{An object with class \code{\link{partlyObservedNetwork}}.}
 
-\item{\code{vBlocks}}{vector of integer with the number of blocks in the successively fitted models}
+\item{\code{sampling}}{The sampling design for the modelling of missing data: MAR designs ("dyad", "node") and MNAR designs ("double-standard", "block-dyad", "block-node" ,"degree")}
 
-\item{\code{sampling}}{The sampling design for the modelling of missing data: MAR designs ("dyad", "node") and NMAR designs ("double-standard", "block-dyad", "block-node" ,"degree")}
+\item{\code{clusterInit}}{Initial clustering: a list of vectors, each with size \code{ncol(adjacencyMatrix)}.}
 
-\item{\code{clusterInit}}{Initial method for clustering: either a character in "hierarchical", "spectral" or "kmeans", or a list with \code{length(vBlocks)} vectors, each with size \code{ncol(adjacencyMatrix)}, providing a user-defined clustering. Default is "hierarchical".}
-
-\item{\code{cores}}{integer for number of cores used. Default is 1.}
-
-\item{\code{trace}}{integer for verbosity (0, 1, 2). Default is 1. Useless when \code{cores} > 1}
-
-\item{\code{useCov}}{logical. If covariates are present in partlyObservedNet, should they be used for the inference or of the network sampling design, or just for the SBM inference? default is TRUE.}
+\item{\code{control}}{a list of parameters controlling advanced features. Only 'trace' and 'useCov' are relevant here. See \code{\link[=estimateMissSBM]{estimateMissSBM()}} for details.}
 }
 \if{html}{\out{</div>}}
 }
@@ -104,20 +94,35 @@ method to launch the estimation of the collection of models
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-smooth"></a>}}
-\if{latex}{\out{\hypertarget{method-smooth}{}}}
-\subsection{Method \code{smooth()}}{
-method for performing smoothing of the ICL
+\if{html}{\out{<a id="method-explore"></a>}}
+\if{latex}{\out{\hypertarget{method-explore}{}}}
+\subsection{Method \code{explore()}}{
+method for performing exploration of the ICL
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{missSBM_collection$smooth(type, control)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{missSBM_collection$explore(control)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{type}}{character, the type of smoothing: forward, backward, both}
+\item{\code{control}}{a list of parameters controlling the exploration, similar to those found in the regular function \code{\link[=estimateMissSBM]{estimateMissSBM()}}}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-plot"></a>}}
+\if{latex}{\out{\hypertarget{method-plot}{}}}
+\subsection{Method \code{plot()}}{
+plot method for missSBM_collection
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{missSBM_collection$plot(type = c("icl", "elbo", "monitoring"))}\if{html}{\out{</div>}}
+}
 
-\item{\code{control}}{a list of parameters controlling the smoothing. See details of regular function \code{\link[=smooth]{smooth()}}}
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{type}}{the type specifies the field to plot, either "icl", "elbo" or "monitoring". Default is "icl"}
 }
 \if{html}{\out{</div>}}
 }

@@ -16,17 +16,18 @@ as S3 methods. See the documentation for  \code{\link[=show]{show()}}, \code{\li
 ## Sample 75\% of dyads in  French political Blogosphere's network data
 adjMatrix <- missSBM::frenchblog2007 \%>\%
   igraph::as_adj (sparse = FALSE) \%>\%
-  missSBM::observeNetwork(sampling = "dyad", parameters = 0.25)
+  missSBM::observeNetwork(sampling = "dyad", parameters = 0.75)
 collection <- estimateMissSBM(adjMatrix, 3:5, sampling = "dyad")
 my_missSBM_fit <- collection$bestModel
 class(my_missSBM_fit)
-plot(my_missSBM_fit, "connectivity")
+plot(my_missSBM_fit, "imputed")
 
 }
 \section{Active bindings}{
 \if{html}{\out{<div class="r6-active-bindings">}}
 \describe{
-\item{\code{fittedSBM}}{the fitted SBM with class \code{\link{SimpleSBM_fit_missSBM}}, inheriting from class \code{\link[sbm:SimpleSBM_fit]{sbm::SimpleSBM_fit}}}
+\item{\code{fittedSBM}}{the fitted SBM with class \code{\link{SimpleSBM_fit_noCov}}, \code{\link{SimpleSBM_fit_withCov}} or
+\code{\link{SimpleSBM_fit_MNAR}} inheriting from class \code{\link[sbm:SimpleSBM_fit]{sbm::SimpleSBM_fit}}}
 
 \item{\code{fittedSampling}}{the fitted sampling, inheriting from class \code{\link{networkSampling}} and corresponding fits}
 
@@ -64,7 +65,7 @@ plot(my_missSBM_fit, "connectivity")
 \subsection{Method \code{new()}}{
 constructor for networkSampling
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{missSBM_fit$new(partlyObservedNet, nbBlocks, netSampling, clusterInit, useCov)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{missSBM_fit$new(partlyObservedNet, netSampling, clusterInit, useCov = TRUE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -72,11 +73,9 @@ constructor for networkSampling
 \describe{
 \item{\code{partlyObservedNet}}{An object with class \code{\link{partlyObservedNetwork}}.}
 
-\item{\code{nbBlocks}}{integer, the number of blocks in the SBM}
+\item{\code{netSampling}}{The sampling design for the modelling of missing data: MAR designs ("dyad", "node") and MNAR designs ("double-standard", "block-dyad", "block-node" ,"degree")}
 
-\item{\code{netSampling}}{The sampling design for the modelling of missing data: MAR designs ("dyad", "node") and NMAR designs ("double-standard", "block-dyad", "block-node" ,"degree")}
-
-\item{\code{clusterInit}}{Initial clustering: either a character in "hierarchical", "spectral" or "kmeans", or a vector with size \code{ncol(adjacencyMatrix)}, providing a user-defined clustering with \code{nbBlocks} levels. Default is "hierarchical".}
+\item{\code{clusterInit}}{Initial clustering: a vector with size \code{ncol(adjacencyMatrix)}, providing a user-defined clustering. The number of blocks is deduced from the number of levels in with \code{clusterInit}.}
 
 \item{\code{useCov}}{logical. If covariates are present in partlyObservedNet, should they be used for the inference or of the network sampling design, or just for the SBM inference? default is TRUE.}
 }
@@ -90,7 +89,7 @@ constructor for networkSampling
 a method to perform inference of the current missSBM fit with variational EM
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{missSBM_fit$doVEM(
-  control = list(threshold = 0.001, maxIter = 100, fixPointIter = 5, trace = 1)
+  control = list(threshold = 0.01, maxIter = 100, fixPointIter = 3, trace = TRUE)
 )}\if{html}{\out{</div>}}
 }
 

@@ -12,6 +12,10 @@ library(ggplot2)
 library(corrplot)
 library(magrittr)
 library(missSBM)
+library(future)
+
+## ----future-plan--------------------------------------------------------------
+future::plan("multisession", workers = 2)
 
 ## ----load data set------------------------------------------------------------
 data("war")
@@ -41,47 +45,20 @@ corrplot(partlyObservedNet_war,
 
 ## ----inference node, results='hide'-------------------------------------------
 vBlocks <- 1:5
-collection_sbm <- estimateMissSBM(partlyObservedNet_war, vBlocks = vBlocks, sampling = "node")
-res_unsmoothed <- data.frame(
-  ICL     = collection_sbm$ICL,
-  nbBlocks = vBlocks, 
-  type    = "raw"
-)
-
-## ----smoothed node, results='hide'--------------------------------------------
-smooth(collection_sbm, "both")
-res_smoothed <- data.frame(
-  ICL     = collection_sbm$ICL,
-  nbBlocks = vBlocks, 
-  type    = "smoothed"
-)
-
-## ----smoothing effect plot, fig.width = 7, fig.height = 5---------------------
-rbind(res_unsmoothed, res_smoothed) %>% 
-  ggplot(aes(x = nbBlocks, y = ICL, group = type, color = type)) + 
-    geom_line() + theme_bw()
+collection_sbm <- estimateMissSBM(partlyObservedNet_war, vBlocks, sampling = "node")
 
 ## ----inference full, results='hide'-------------------------------------------
 collection_sbm_full <- 
-  estimateMissSBM(
-    adjacencyMatrix = belligerent_adjacency, 
-    vBlocks     = vBlocks, 
-    sampling    = "node"
-  )
-smooth(collection_sbm_full, "forward", control = list(iterates = 3))
+  estimateMissSBM(belligerent_adjacency, vBlocks, sampling = "node", control = list(iterates = 2))
 
 ## ----plot comparison full-----------------------------------------------------
-res_missing <- res_smoothed
-res_missing$type <- "missing"
-res_full <- data.frame(
-  ICL     = collection_sbm_full$ICL,
-  nbBlocks = vBlocks, 
-  type    = "full"
-)
-rbind(res_missing, res_full) %>% 
+rbind(
+  data.frame(ICL = collection_sbm_full$ICL, nbBlocks = vBlocks, type = "full"),
+  data.frame(ICL = collection_sbm$ICL, nbBlocks = vBlocks, type = "missing")
+) %>% 
   ggplot(aes(x = nbBlocks, y = ICL, group = type, color = type)) + 
-    geom_line() + theme_bw()
-
+  labs(title = "Model selection", x = "#blocks", y = "Integrated Classification Likelihood") +
+  geom_line() + theme_bw()
 
 ## ----clustering comparison----------------------------------------------------
 table(
@@ -90,16 +67,13 @@ table(
   )
 
 ## ----plot, fig.width=7, fig.height=7------------------------------------------
-par(mfrow = c(2,2))
-plot(collection_sbm$bestModel, type = "network")
-plot(collection_sbm$bestModel, type = "connectivity")
-plot(collection_sbm_full$bestModel, type = "network")
-plot(collection_sbm_full$bestModel, type = "connectivity")
+par(mfrow = c(1,2))
+plot(collection_sbm$bestModel, type = "expected")
+plot(collection_sbm_full$bestModel, type = "expected")
 
 ## ----war network with covariates full, results = 'hide'-----------------------
-vBlocks <- 1:4
-collection_sbm_power_full <- estimateMissSBM(belligerent_adjacency, vBlocks = vBlocks, sampling = "node", covariates = list(belligerent_power))
-smooth(collection_sbm_power_full)
+vBlocks <- 1:3
+collection_sbm_power_full <- estimateMissSBM(belligerent_adjacency, vBlocks = vBlocks, sampling = "node", covariates = list(belligerent_power)) 
 
 ## ----power_effect-------------------------------------------------------------
 collection_sbm_power_full$bestModel$fittedSBM$covarParam
@@ -124,8 +98,7 @@ corrplot(sampleNet_power_miss,
   )
 
 ## ----fit power missing,results = 'hide'---------------------------------------
-collection_sbm_power_miss <-estimateMissSBM(sampleNet_power_miss, vBlocks = vBlocks, sampling = "covar-node", covariates = list(belligerent_power))
-smooth(collection_sbm_power_miss)
+collection_sbm_power_miss <- estimateMissSBM(sampleNet_power_miss, vBlocks = vBlocks, sampling = "covar-node", covariates = list(belligerent_power))
 
 ## ----estimated parameters sample----------------------------------------------
 collection_sbm_power_miss$bestModel$fittedSampling$parameters
@@ -153,7 +126,10 @@ corrplot(sampleNet_trade_miss,
   )
 
 ## ----estimate trade-----------------------------------------------------------
-collection_sbm_trade_miss <-estimateMissSBM(sampleNet_trade_miss ,vBlocks = vBlocks, sampling = "covar-dyad", covariates = list(trade))
+collection_sbm_trade_miss <- estimateMissSBM(sampleNet_trade_miss, vBlocks = vBlocks, sampling = "covar-dyad", covariates = list(trade))
 collection_sbm_trade_miss$bestModel$fittedSampling$parameters
 collection_sbm_trade_miss$bestModel$fittedSBM$covarParam
+
+## ----future-plan-unset--------------------------------------------------------
+future::plan("sequential")
 

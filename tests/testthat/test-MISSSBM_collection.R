@@ -1,72 +1,40 @@
 context("test-misssbm_collection")
 
-set.seed(1890718)
-### A SBM model : ###
-N <- 100
-Q <- 3
-pi <- rep(1, Q)/Q           # block proportion
-theta <- list(mean = diag(.45, Q, Q) + .05) # connectivity matrix
-directed <- FALSE              # if the network is directed or not
-
-### Draw a SBM model
-mySBM <- sbm::sampleSimpleSBM(N, pi, theta) # simulation of ad Bernoulli non-directed SBM
-A <- mySBM$netMatrix             # the adjacency matrix
+source("utils_test.R", local =TRUE)
+sampler_undirected_nocov$rNetwork(store = TRUE)
 
 test_that("missSBMcollection works", {
 
-  adjMatrix  <- missSBM::observeNetwork(A, "dyad", .5, clusters = mySBM$memberships)
+  adjMatrix  <- missSBM::observeNetwork(sampler_undirected_nocov$networkData, "dyad", .5, clusters = sampler_undirected_nocov$memberships)
   partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix)
+  cl <- partlyObservedNet$clustering(1:3)
 
   ## Instantiate the collection of missSBM_fit
   collection <- missSBM_collection$new(
     partlyObservedNet  = partlyObservedNet,
-    vBlocks     = 1:4,
     sampling    = "dyad",
-    clusterInit = 'hierarchical', 1, TRUE, TRUE)
+    clusterInit = cl,
+    control = list(useCov = FALSE, trace = TRUE))
 
   ## control parameter for the VEM
-  control <- list(threshold = 1e-4, maxIter = 200, fixPointIter = 5, cores = 1, trace = 0)
+  control <- list(threshold = 1e-2, maxIter = 50, fixPointIter = 3, trace = 0, iterates = 0, exploration = "both")
 
   ## VEM Estimation on each element of the collection
   collection$estimate(control)
   expect_is(collection, "missSBM_collection")
 
-  smooth(collection, "forward")
+  control$iterates  <- 1
+
+  control$exploration <- "forward"
+  collection$explore(control)
   expect_is(collection, "missSBM_collection")
 
-  smooth(collection, "backward")
+  control$exploration <- "backward"
+  collection$explore(control)
   expect_is(collection, "missSBM_collection")
 
-  smooth(collection, "both")
-  expect_is(collection, "missSBM_collection")
-})
-
-test_that("More smoothing tests", {
-
-  adjMatrix  <- missSBM::observeNetwork(A, "dyad", .5, clusters = mySBM$memberships)
-  partlyObservedNet <- missSBM:::partlyObservedNetwork$new(adjMatrix)
-
-
-  ## Instantiate the collection of missSBM_fit
-  collection <- missSBM_collection$new(
-    partlyObservedNet  = partlyObservedNet,
-    vBlocks     = 1:4,
-    sampling    = "dyad",
-    clusterInit = 'hierarchical', 1, TRUE, TRUE)
-
-  ## control parameter for the VEM
-  control <- list(threshold = 1e-4, maxIter = 200, fixPointIter = 5, cores = 1, trace = 0)
-
-  ## VEM Estimation on each element of the collection
-  collection$estimate(control)
-  expect_is(collection, "missSBM_collection")
-
-  smooth(collection, "forward", control = list(iterates = 2))
-  expect_is(collection, "missSBM_collection")
-
-  smooth(collection, "backward", control = list(iterates = 2))
-  expect_is(collection, "missSBM_collection")
-
-  smooth(collection, "both", control = list(iterates = 2))
+  control$exploration <- "both"
+  collection$explore(control)
   expect_is(collection, "missSBM_collection")
 })
+

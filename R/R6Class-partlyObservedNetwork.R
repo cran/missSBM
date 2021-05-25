@@ -3,6 +3,7 @@
 #' This class is not exported to the user
 #'
 #' @importFrom R6 R6Class
+#' @import Matrix
 partlyObservedNetwork <-
   R6::R6Class(classname = "partlyObservedNetwork",
   ## FIELDS : encode network with missing edges
@@ -14,19 +15,17 @@ partlyObservedNetwork <-
     X        = NULL, # the covariates matrix
     phi      = NULL, # the covariates array
     directed = NULL, # directed network of not
-    D        = NULL, # list of potential dyads in the network
-    nas      = NULL, # all NA in Y
-    D_obs    = NULL, # array indices of missing dyads
-    D_miss   = NULL, # array indices of observed dyads
-    R        = NULL, # matrix of observed and non-observed edges
-    S        = NULL  # vector of observed and non-observed nodes
+    obs      = NULL, # collection of observed dyads
+    miss     = NULL, # collection of missing dyads
+    R        = NULL, # the sampling matrix (sparse encoding)
+    S        = NULL  # the (anti) sampling matrix (sparse encoding)
   ),
   ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   ## ACTIVE BINDING
   ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   active = list(
     #' @field samplingRate The percentage of observed dyads
-    samplingRate = function(value) {length(private$D_obs)/self$nbDyads},
+    samplingRate = function(value) {sum(private$R)/self$nbDyads},
     #' @field nbNodes The number of nodes
     nbNodes = function(value) {ncol(private$Y)},
     #' @field nbDyads The number of dyads
@@ -35,24 +34,24 @@ partlyObservedNetwork <-
     },
     #' @field is_directed logical indicating if the network is directed or not
     is_directed = function(value) {private$directed},
-    #' @field netMatrix  The adjacency matrix of the network
-    netMatrix = function(value) {private$Y},
+    #' @field networkData  The adjacency matrix of the network
+    networkData = function(value) {private$Y},
     #' @field covarArray the array of covariates
     covarArray = function(value) {private$phi},
     #' @field covarMatrix the matrix of covariates
     covarMatrix = function(value) {if (missing(value)) return(private$X) else  private$X <- value},
-    #' @field dyads a list of potential dyads in the network
-    dyads           = function(value) {private$D},
     #' @field missingDyads array indices of missing dyads
-    missingDyads    = function(value) {private$D_miss},
+    missingDyads    = function(value) {private$miss},
     #' @field observedDyads array indices of observed dyads
-    observedDyads   = function(value) {private$D_obs},
+    observedDyads   = function(value) {private$obs},
     #' @field samplingMatrix matrix of observed and non-observed edges
     samplingMatrix  = function(value) {private$R},
-    #' @field observedNodes a vector of observed and non-observed nodes
-    observedNodes   = function(value) {private$S},
-    #' @field NAs boolean for NA entries in the adjacencyMatrix
-    NAs             = function(value) {private$nas}
+    #' @field samplingMatrixBar matrix of observed and non-observed edges
+    samplingMatrixBar  = function(value) {private$S},
+    #' @field observedNodes a vector of observed and non-observed nodes (observed means at least one non NA value)
+    observedNodes   = function(value) {
+      (rowSums(private$S) + colSums(private$S)) == 0
+     }
   ),
   ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   ## PUBLIC MEMBERS
@@ -62,81 +61,103 @@ partlyObservedNetwork <-
     #' @param adjacencyMatrix The adjacency matrix of the network
     #' @param covariates A list with M entries (the M covariates), each of whom being either a size-N vector or N x N matrix.
     #' @param similarity An R x R -> R function to compute similarities between node covariates. Default is \code{l1_similarity}, that is, -abs(x-y).
-    initialize = function(adjacencyMatrix, covariates = NULL, similarity = missSBM:::l1_similarity) {
+    initialize = function(adjacencyMatrix, covariates = list(), similarity = missSBM:::l1_similarity) {
 
-      ## adjacency matrix
-      stopifnot(is.matrix(adjacencyMatrix))
+      ## SANITY CHECKS (on data)
+      stopifnot(inherits(adjacencyMatrix, "matrix") | inherits(adjacencyMatrix, "dgCMatrix"))
+      ## TODO: handle the case when adjacencyMatrix is a sparseMatrix with NA
 
-      ## Only binary graph supported
-      stopifnot(all.equal(sort(unique(as.numeric(adjacencyMatrix[!is.na(adjacencyMatrix)]))), c(0,1)))
+      ## TODO: later, should also include Poisson/Gaussian models
+      stopifnot(all.equal(sort(setdiff(unique(as.numeric(adjacencyMatrix)), NA)), c(0,1)))
 
-      if (isSymmetric(adjacencyMatrix)) private$directed <- FALSE else private$directed <- TRUE
-      private$Y  <- adjacencyMatrix
+      ## type of SBM
+      private$directed <- ifelse(isSymmetric(adjacencyMatrix), FALSE, TRUE)
 
       ## covariates
+      ## TODO: for symmetric network, we should only keep the upper triangular part of the covariates
       covar <- format_covariates(covariates, similarity)
       private$X   <- covar$Matrix
       private$phi <- covar$Array
 
       ## sets of observed / unobserved dyads
-      private$nas <- is.na(adjacencyMatrix)
       if (private$directed) {
-        ## remove diagonal (no loops)
-        private$D <- which(upper.tri(adjacencyMatrix) | lower.tri(adjacencyMatrix))
+        dyads <- upper.tri(adjacencyMatrix) | lower.tri(adjacencyMatrix)
       } else {
-        private$D <- which(upper.tri(adjacencyMatrix))
+        dyads <- upper.tri(adjacencyMatrix)
       }
-      private$D_miss <- intersect(which( private$nas), private$D )
-      private$D_obs  <- intersect(which(!private$nas), private$D )
+      ## where are my observations?
+      private$obs   <- which(!is.na(adjacencyMatrix) & dyads, arr.ind = TRUE )
+      private$miss  <- which( is.na(adjacencyMatrix) & dyads, arr.ind = TRUE )
+      ## where are my non-zero entries?
+      nzero <- which(!is.na(adjacencyMatrix) & adjacencyMatrix != 0 & dyads, arr.ind = TRUE)
 
-      ## sets of observed / unobserved nodes
-      S <- rep(FALSE, self$nbNodes)
-      S[!is.na(rowSums(adjacencyMatrix))] <- TRUE
-      private$S <- S
+      ## sampling matrix (indicating who is observed)
+      private$R <- Matrix::sparseMatrix(private$obs[,1] , private$obs[,2] ,x = 1, dims = dim(adjacencyMatrix))
+      private$S <- Matrix::sparseMatrix(private$miss[,1], private$miss[,2],x = 1, dims = dim(adjacencyMatrix))
+      ## network matrix (only none zero, non NA values)
+      private$Y   <- Matrix::sparseMatrix(nzero[,1], nzero[,2], x = 1, dims = dim(adjacencyMatrix))
 
-      ## sampling matrix (indicating who is observed) : USELESS ??
-      R <- matrix(0, self$nbNodes, self$nbNodes)
-      R[private$D_obs] <- 1
-      if (!private$directed)  R <- t(R) | R
-      private$R <- R
     },
     #' @description method to cluster network data with missing value
-    #' @param nbBlocks integer, the chosen number of blocks
-    #' @param method character with a clustering method among "hierarchical", "spectral", "kmeans".
+    #' @param vBlocks The vector of number of blocks considered in the collection.
+    #' @param imputation character indicating the type of imputation among "median", "average"
     #' @importFrom stats binomial glm.fit residuals
-    clustering = function(nbBlocks, method = c("hierarchical", "spectral", "kmeans")) {
+    clustering = function(vBlocks,
+                          imputation = ifelse(is.null(private$phi), "median", "average")) {
 
-      if (nbBlocks > 1) {
-        adjacencyMatrix <- private$Y
-        if (!is.null(private$phi)) {
-          y <- as.vector(adjacencyMatrix)
-          X <- cbind(1, apply(private$phi, 3, as.vector))
-          NAs <- as.vector(private$nas)
-          adjacencyMatrix <- matrix(NA, self$nbNodes, self$nbNodes)
-          adjacencyMatrix[!NAs] <- .logistic(residuals(glm.fit(X[!NAs, ], y[!NAs], family = binomial())))
+      A <- self$imputation(imputation)
+      n <- ncol(A)
+      if (self$is_directed) A <- A %*% t(A)
+      ## A <- A %*% t(A)
+      # A <- as.matrix(1/(1 + exp(-A/sd(A)))) ## caveat: the matrix is dense; pros: lonely node are automatically handled
+
+      ## handling lonely souls
+      unconnected <- which(rowSums(abs(A)) == 0)
+      connected   <- setdiff(1:n, unconnected)
+      A <- A[connected,connected]
+
+      ## normalized absolute Laplacian with Gaussian kernel
+      D <- 1/sqrt(rowSums(abs(A)))
+      L <- sweep(sweep(A, 1, D, "*"), 2, D, "*")
+##      U <- base::svd(L, nu = max(vBlocks), nv = 0)$u
+      U <- eigen(L, symmetric = TRUE)$vectors[, 1:max(vBlocks), drop = FALSE]
+      res <- future_lapply(vBlocks, function(k) {
+        cl <- rep(1L, n)
+        if (k != 1) {
+          Un <- U[, 1:k, drop = FALSE]
+          Un <- sweep(Un, 1, sqrt(rowSums(Un^2)), "/")
+          Un[is.nan(Un)] <- 0
+          cl_ <- as.integer(
+            kmeans_missSBM(Un, k)
+          )
+         ## handing lonely souls
+         cl[connected] <- cl_
+         cl[unconnected] <- which.min(rowsum(D, cl_))
         }
-        clustering <-
-          switch(match.arg(method),
-                 "spectral"     = init_spectral(    adjacencyMatrix, nbBlocks),
-                 "kmeans"       = init_kmeans(      adjacencyMatrix, nbBlocks),
-                 "hierarchical" = init_hierarchical(adjacencyMatrix, nbBlocks))
-      } else {
-        clustering <- rep(1L, self$nbNodes)
-      }
-      clustering
+        cl
+      }, future.seed = TRUE, future.scheduling = structure(TRUE, ordering = "random"))
+      res
     },
     #' @description basic imputation from existing clustering
-    #' @param clustering a vector with size \code{ncol(adjacencyMatrix)}, providing a user-defined clustering with \code{nbBlocks} levels.
-    #' @return an adjacency matrix with imputed values
-### TODO: include covariates in the imputation!!!
-    imputation = function(clustering) {
-      adjancency0 <- private$Y
-      adjancency0[private$nas] <- 0
-      Z <- clustering_indicator(clustering)
-      theta0 <- check_boundaries((t(Z) %*% adjancency0 %*% Z) / (t(Z) %*% (1 - diag(self$nbNodes)) %*% Z))
-      imputation <- private$Y
-      imputation[private$nas] <- (Z %*% theta0 %*% t(Z))[private$nas]
-      imputation
+    #' @param type a character, the type of imputation. Either "median" or "average"
+    imputation = function(type = c("median", "average", "zero")) {
+      adjacencyMatrix <- private$Y
+      if (!is.null(private$phi)) {
+        y <- as.vector(adjacencyMatrix[self$observedDyads])
+        X <- cbind(1, apply(private$phi, 3, function(x) x[self$observedDyads]))
+### TODO: make it work for other model than Bernoulli / family than binomial
+        adjacencyMatrix[self$observedDyads] <- .logistic(residuals(glm.fit(X, y, family = binomial())))
+      }
+      suppressMessages(adjacencyMatrix[self$missingDyads] <-
+        switch(match.arg(type),
+               "average"  = mean(adjacencyMatrix, na.rm = TRUE),
+               "median"   = median(adjacencyMatrix, na.rm = TRUE),
+               "zero"     = 0
+        ))
+      if (!private$directed)
+        suppressMessages(adjacencyMatrix[lower.tri(adjacencyMatrix)] <- Matrix::t(adjacencyMatrix)[lower.tri(adjacencyMatrix)])
+
+      adjacencyMatrix
     }
   )
 )
