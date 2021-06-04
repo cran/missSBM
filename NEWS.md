@@ -1,4 +1,9 @@
-# missSBM 1.0.0
+# missSBM 1.0.1 [2021-06-04]
+
+  - less conservative tests to avoid random failure in CRAN checks
+  - tiny improvements in partlyObservedNetwork (less storage)
+
+# missSBM 1.0.0 [2021-05-25]
 
   - now rely on future_lapply  for parallel computing (plan to be set by the user)
   - faster model exploration (used to be called 'smoothing'), now integrated by default in estimateMissSBM

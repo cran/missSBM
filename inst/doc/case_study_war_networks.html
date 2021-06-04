@@ -162,7 +162,7 @@ div.csl-indent {
 
 <h1 class="title toc-ignore">missSBM: a case study with war networks</h1>
 <h4 class="author">missSBM team</h4>
-<h4 class="date">Last update: 2021-05-25</h4>
+<h4 class="date">Last update: 2021-06-04</h4>
 
 
 <div id="TOC">
@@ -270,7 +270,7 @@ More specifically, the data collection may be missing for some countries in the 
 <p>The covariate provided as a vector is transferred on edges through an <span class="math inline">\(\ell_1\)</span> similarity: for edge <span class="math inline">\((i,j)\)</span> the associated covariate is defined by <span class="math inline">\(|x_i-x_j|\)</span> where <span class="math inline">\(x_i\)</span> denotes the covariate for node <span class="math inline">\(i\)</span>. Another similarity measure could be provided via the option <code>similarity</code>.</p>
 <p>The estimated effect of the covariate is obtained through</p>
 <div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>collection_sbm_power_full<span class="sc">$</span>bestModel<span class="sc">$</span>fittedSBM<span class="sc">$</span>covarParam</span></code></pre></div>
-<pre><code>## [1] -5.390499</code></pre>
+<pre><code>## [1] -5.388988</code></pre>
 <p>The covariate could be responsible for the sampling. The state with bigger military power are more likely to be fully observed than the others. We will simulate this sampling. An intercept is considered by default in the sampling model.</p>
 <div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>nWar <span class="ot">&lt;-</span> <span class="fu">nrow</span>(belligerent_adjacency)</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>parameters_sample <span class="ot">&lt;-</span> <span class="dv">600</span></span>
@@ -342,7 +342,7 @@ More specifically, the data collection may be missing for some countries in the 
 <div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>collection_sbm_trade_miss<span class="sc">$</span>bestModel<span class="sc">$</span>fittedSampling<span class="sc">$</span>parameters</span></code></pre></div>
 <pre><code>## [1] -2.107424  1.026095</code></pre>
 <div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>collection_sbm_trade_miss<span class="sc">$</span>bestModel<span class="sc">$</span>fittedSBM<span class="sc">$</span>covarParam</span></code></pre></div>
-<pre><code>## [1] 0.2408781</code></pre>
+<pre><code>## [1] 0.3456167</code></pre>
 <p>When you are done, do not forget to get back to the standard sequential plan with future.</p>
 <div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>future<span class="sc">::</span><span class="fu">plan</span>(<span class="st">&quot;sequential&quot;</span>)</span></code></pre></div>
 </div>

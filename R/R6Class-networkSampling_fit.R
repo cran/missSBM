@@ -10,9 +10,7 @@ networkSamplingDyads_fit <-
   private = list(
     card_D   = NULL, # number of possible dyads in the network
     card_D_o = NULL, # number of observed dyads in the network
-    card_D_m = NULL, # number of missing dyads in the network
-    D_miss   = NULL,  # where are the missing dyads
-    D_obs    = NULL  # observed dyads
+    card_D_m = NULL  # number of missing dyads in the network
   ),
   ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   ## PUBLIC MEMBERS
@@ -23,11 +21,9 @@ networkSamplingDyads_fit <-
     #' @param name a character for the name of sampling to fit on the partlyObservedNetwork
     initialize = function(partlyObservedNetwork, name) {
       private$name     <- name
-      private$D_miss   <- partlyObservedNetwork$missingDyads
-      private$D_obs    <- partlyObservedNetwork$observedDyads
       private$card_D   <- partlyObservedNetwork$nbDyads
       private$card_D_o <- sum(partlyObservedNetwork$samplingMatrix)
-      private$card_D_m <- sum(partlyObservedNetwork$samplingMatrixBar)
+      private$card_D_m <- private$card_D - private$card_D_o
     },
     #' @description show method
     show = function() {
@@ -72,8 +68,8 @@ networkSamplingNodes_fit <-
       private$name     <- name
       private$N_obs    <- partlyObservedNetwork$observedNodes
       private$card_N   <- partlyObservedNetwork$nbNodes
-      private$card_N_o <- sum( partlyObservedNetwork$observedNodes)
-      private$card_N_m <- sum(!partlyObservedNetwork$observedNodes)
+      private$card_N_o <- sum(partlyObservedNetwork$observedNodes)
+      private$card_N_m <- private$card_N - private$card_N_o
     },
     #' @description show method
     show = function() {
@@ -105,7 +101,7 @@ dyadSampling_fit <-
     #' @param ... used for compatibility
     initialize = function(partlyObservedNetwork, ...) {
       super$initialize(partlyObservedNetwork, "dyad")
-      private$psi <- check_boundaries(private$card_D_o / (private$card_D_m + private$card_D_o))
+      private$psi <- check_boundaries(private$card_D_o / private$card_D)
     }
   ),
   active = list(
@@ -124,13 +120,17 @@ covarDyadSampling_fit <-
   inherit = networkSamplingDyads_fit,
   public = list(
     #' @description constructor
-    #' @param partlyObservedNetwork a object with class partlyObservedNetwork representing the observed data with possibly missing entries
+    #' @param partialNet a object with class partlyObservedNetwork representing the observed data with possibly missing entries
     #' @param ... used for compatibility
-    initialize = function(partlyObservedNetwork, ...) {
-      super$initialize(partlyObservedNetwork, "covar-dyad")
-      dyads <- rbind(partlyObservedNetwork$observedDyads, partlyObservedNetwork$missingDyads)
-      X <- cbind(1, apply(partlyObservedNetwork$covarArray, 3, function(x) x[dyads]))
-      y <- partlyObservedNetwork$samplingMatrix[dyads]
+    initialize = function(partialNet, ...) {
+      super$initialize(partialNet, "covar-dyad")
+      if (partialNet$is_directed) {
+        dyads <- which(.row(dim(partialNet$networkData)) != .col(dim(partialNet$networkData)), arr.ind = TRUE)
+      } else {
+        dyads <- which(.row(dim(partialNet$networkData)) < .col(dim(partialNet$networkData)), arr.ind = TRUE)
+      }
+      X <- cbind(1, apply(partialNet$covarArray, 3, function(x) x[dyads]))
+      y <- partialNet$samplingMatrix[dyads]
       glm_out     <- glm.fit(X, y, family = binomial())
       private$psi <- coefficients(glm_out)
       y_hat <- fitted(glm_out)
