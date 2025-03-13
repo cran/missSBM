@@ -1,7 +1,7 @@
 Package: missSBM
 Type: Package
 Title: Handling Missing Data in Stochastic Block Models
-Version: 1.0.4
+Version: 1.0.5
 Authors@R: c(
   person("Julien", "Chiquet", role = c("aut", "cre"), email = "julien.chiquet@inrae.fr",
       comment = c(ORCID = "0000-0002-3629-3429")),
@@ -23,7 +23,7 @@ BugReports: https://github.com/grossSBM/missSBM/issues
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.2
 Depends: R (>= 3.4.0)
 Imports: Rcpp, methods, igraph, nloptr, ggplot2, future.apply, R6,
         rlang, sbm, magrittr, Matrix, RSpectra
@@ -40,7 +40,7 @@ Suggests: aricode, blockmodels, corrplot, future, testthat (>= 2.1.0),
 VignetteBuilder: knitr
 Language: en-US
 NeedsCompilation: yes
-Packaged: 2023-10-24 15:34:39 UTC; jchiquet
+Packaged: 2025-03-13 08:07:21 UTC; jchiquet
 Author: Julien Chiquet [aut, cre] (<https://orcid.org/0000-0002-3629-3429>),
   Pierre Barbillon [aut] (<https://orcid.org/0000-0002-7766-7693>),
   Timothée Tabouy [aut],
@@ -48,4 +48,4 @@ Author: Julien Chiquet [aut, cre] (<https://orcid.org/0000-0002-3629-3429>),
   François Gindraud [ctb] (provided C++ interface to NLopt),
   großBM team [ctb]
 Repository: CRAN
-Date/Publication: 2023-10-24 16:00:05 UTC
+Date/Publication: 2025-03-13 08:30:02 UTC
